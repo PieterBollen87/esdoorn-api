@@ -55,6 +55,7 @@ if (process.env.NODE_ENV === 'development') {
     };
     https.createServer(sslOptions, app).listen(PORT, () => {
       console.log(`🔐 HTTPS server listening on https://localhost:${PORT}`);
+      console.log('test');
     });
   } else {
     // Production – plain HTTP (behind a reverse‑proxy that terminates TLS)
