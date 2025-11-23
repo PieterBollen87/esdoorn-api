@@ -36,7 +36,7 @@ router.post('/login', loginLimiter, async (req, res) => {
     console.log(user);
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const match = await bcrypt.compare(password, user.passwordHash);
+    const match = await bcrypt.compare(password, user.password);
     if (!match) return res.status(401).json({ error: 'Invalid credentials' });
 
     // Build JWT payload (include role)
