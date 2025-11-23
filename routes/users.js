@@ -13,7 +13,7 @@ const { requireAdmin } = require('../middleware/auth');
  */
 router.get('/', async (req, res) => {
   try {
-    const rows = await db.all('SELECT id, username, role FROM users ORDER BY username');
+    const rows = await db.query('SELECT id, username, role FROM users ORDER BY username');
     res.json(rows);
   } catch (err) {
     console.error('USERS GET error:', err);
@@ -33,7 +33,7 @@ router.get('/', async (req, res) => {
  */
 router.get('/', async (req, res) => {
   try {
-    const rows = await db.all('SELECT id, username, role FROM users ORDER BY username');
+    const rows = await db.query('SELECT id, username, role FROM users ORDER BY username');
     res.json(rows);
   } catch (err) {
     console.error('USERS GET error:', err);
@@ -81,7 +81,7 @@ router.post('/', requireAdmin, async (req, res) => {
       INSERT INTO users (username, passwordHash, role)
       VALUES (?,?,?)
     `;
-    const result = await db.run(sql, [username, hash, role]);
+    const result = await db.query(sql, [username, hash, role]);
 
     // ----------------------------------------------------------
     // 3️⃣ Return the newly created user (without the password hash)
