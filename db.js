@@ -21,7 +21,7 @@ const pool = mysql.createPool({
 async function query(sql, params) {
   // `pool.execute` returns [rows, fields]; we only need rows
   let [rows] = [];  
-  if (params === undefined) {
+  if (params === undefined || !params) {
         [rows] = await pool.execute(sql);
     } else {
         [rows] = await pool.execute(sql, params);
