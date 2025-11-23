@@ -18,9 +18,8 @@ const pool = mysql.createPool({
 // ------------------------------------------------
 // 2️⃣ Tiny helper – mimics the old SQLite API
 // -------------------------------------------------
-async function query(sql, params = []) {
+async function query(sql, params) {
   // `pool.execute` returns [rows, fields]; we only need rows
-  console.log(params);
   const [rows] = await pool.execute(sql, params);
   return rows;                  // array of objects (or empty array)
 }
