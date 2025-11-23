@@ -16,15 +16,14 @@ function verifyToken(req, res, next) {
     // payload contains sub (user id) and role (admin/user)
     const user = await db.query('SELECT id, username, role FROM users WHERE id = ?', [payload.sub]);
     if (!user) return res.status(401).json({ error: 'User not found' });
-
+    console.log(user);
     req.user = { id: user.id, username: user.username, role: user.role };
     next();
   });
 }
 /* Admin‑only guard */
 function requireAdmin(req, res, next) {
-    console.log(' request: ' , req);
-
+    console.log(res.user);
   if (req.user && req.user.role === 'admin') return next();
   return res.status(403).json({ error: 'Admin privileges required' });
 }
