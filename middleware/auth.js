@@ -14,16 +14,17 @@ function verifyToken(req, res, next) {
     if (err) return res.status(401).json({ error: 'Invalid or expired token' });
 
     // payload contains sub (user id) and role (admin/user)
-    const user = await db.query('SELECT id, username, role FROM users WHERE id = ?', [payload.sub]);
+    const users = await db.query('SELECT id, username, role FROM users WHERE id = ?', [payload.sub]);
+    const user = users[0] ?? null;
     if (!user) return res.status(401).json({ error: 'User not found' });
-    console.log(user);
+    console.log('VERIFY USER: ' ,user);
     req.user = { id: user.id, username: user.username, role: user.role };
     next();
   });
 }
 /* Admin‑only guard */
 function requireAdmin(req, res, next) {
-    console.log(res.user);
+    console.log(' REQUIRE USER: ', res.user);
   if (req.user && req.user.role === 'admin') return next();
   return res.status(403).json({ error: 'Admin privileges required' });
 }
