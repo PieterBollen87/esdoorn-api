@@ -3,7 +3,10 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
-/* Helper – turn DB row into API object (adds doctor name) */
+/**
+ * Helper – convert a DB row to the API shape.
+ * Includes the doctor's full name for convenience.
+ */
 function toApi(row, req) {
   const host = `${req.protocol}://${req.get('host')}`;
   return {
@@ -15,117 +18,138 @@ function toApi(row, req) {
   };
 }
 
-/* GET /holidays – list all holiday entries */
-router.get('/', (req, res) => {
+/* -------------------------------------------------
+   GET /holidays – list all holiday entries
+   ------------------------------------------------- */
+router.get('/', async (req, res) => {
   const sql = `
-    SELECT h.id, h.doctorId, d.firstname || ' ' || d.lastname AS doctorName,
+    SELECT h.id, h.doctorId,
+           CONCAT(d.firstname, ' ', d.lastname) AS doctorName,
            h.startDate, h.endDate
     FROM holidays h
     JOIN doctors d ON d.id = h.doctorId
     ORDER BY h.startDate DESC
   `;
-  db.all(sql, [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
+  try {
+    const rows = await db.all(sql);
     const result = rows.map(r => toApi(r, req));
     res.json(result);
-  });
+  } catch (err) {
+    console.error('HOLIDAYS GET error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-/* GET /holidays/:id – single entry */
-router.get('/:id', (req, res) => {
+/* -------------------------------------------------
+   GET /holidays/:id – single holiday
+   ------------------------------------------------- */
+router.get('/:id', async (req, res) => {
   const id = Number(req.params.id);
   const sql = `
-    SELECT h.id, h.doctorId, d.firstname || ' ' || d.lastname AS doctorName,
+    SELECT h.id, h.doctorId,
+           CONCAT(d.firstname, ' ', d.lastname) AS doctorName,
            h.startDate, h.endDate
     FROM holidays h
     JOIN doctors d ON d.id = h.doctorId
     WHERE h.id = ?
   `;
-  db.get(sql, [id], (err, row) => {
-    if (err) return res.status(500).json({ error: err.message });
+  try {
+    const row = await db.get(sql, [id]);
     if (!row) return res.status(404).json({ error: 'Holiday not found' });
     res.json(toApi(row, req));
-  });
+  } catch (err) {
+    console.error('HOLIDAYS GET/:id error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-/* POST /holidays – create a new holiday entry */
-router.post('/', express.json(), (req, res) => {
+/* -------------------------------------------------
+   POST /holidays – create a new holiday
+   ------------------------------------------------- */
+router.post('/', async (req, res) => {
   const { doctorId, startDate, endDate } = req.body;
   if (!doctorId || !startDate || !endDate) {
     return res.status(400).json({ error: 'doctorId, startDate and endDate required' });
   }
+
   const sql = `
     INSERT INTO holidays (doctorId, startDate, endDate)
-    VALUES (?, ?, ?)
+    VALUES (?,?,?)
   `;
-  db.run(sql, [doctorId, startDate, endDate], function (err) {
-    if (err) return res.status(500).json({ error: err.message });
+  try {
+    const result = await db.run(sql, [doctorId, startDate, endDate]);
     // Return the freshly created row (including doctor name)
-    db.get(
+    const created = await db.get(
       `SELECT h.id, h.doctorId,
-              d.firstname || ' ' || d.lastname AS doctorName,
+              CONCAT(d.firstname, ' ', d.lastname) AS doctorName,
               h.startDate, h.endDate
        FROM holidays h
        JOIN doctors d ON d.id = h.doctorId
        WHERE h.id = ?`,
-      [this.lastID],
-      (e, row) => {
-        if (e) return res.status(500).json({ error: e.message });
-        res.status(201).json(toApi(row, req));
-      }
+      [result.insertId]
     );
-  });
+    res.status(201).json(toApi(created, req));
+  } catch (err) {
+    console.error('HOLIDAYS POST error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-/* PUT /holidays/:id – update an existing entry */
-router.put('/:id', express.json(), (req, res) => {
+/* -----------------------------------------
+   PUT /holidays/:id – update an existing holiday
+   ------------------------------------------------- */
+router.put('/:id', async (req, res) => {
   const id = Number(req.params.id);
   const { doctorId, startDate, endDate } = req.body;
 
-  // First fetch current row (to keep unchanged fields)
-  db.get('SELECT * FROM holidays WHERE id = ?', [id], (err, oldRow) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (!oldRow) return res.status(404).json({ error: 'Holiday not found' });
+  // Load current row to keep unchanged fields
+  const old = await db.get('SELECT * FROM holidays WHERE id = ?', [id]);
+  if (!old) return res.status(404).json({ error: 'Holiday not found' });
 
-    const sql = `
-      UPDATE holidays
-      SET doctorId = ?, startDate = ?, endDate = ?
-      WHERE id = ?
-    `;
-    const params = [
-      doctorId ?? oldRow.doctorId,
-      startDate ?? oldRow.startDate,
-      endDate ?? oldRow.endDate,
+  const sql = `
+    UPDATE holidays
+    SET doctorId = ?, startDate = ?, endDate = ?
+    WHERE id = ?
+  `;
+  try {
+    await db.run(sql, [
+      doctorId || old.doctorId,
+      startDate || old.startDate,
+      endDate   || old.endDate,
       id
-    ];
-    db.run(sql, params, function (e) {
-      if (e) return res.status(500).json({ error: e.message });
-      // Return updated row with doctor name
-      db.get(
-        `SELECT h.id, h.doctorId,
-                d.firstname || ' ' || d.lastname AS doctorName,
-                h.startDate, h.endDate
-         FROM holidays h
-         JOIN doctors d ON d.id = h.doctorId
-         WHERE h.id = ?`,
-        [id],
-        (err2, row) => {
-          if (err2) return res.status(500).json({ error: err2.message });
-          res.json(toApi(row, req));
-        }
-      );
-    });
-  });
+    ]);
+
+    const updated = await db.get(
+      `SELECT h.id, h.doctorId,
+              CONCAT(d.firstname, ' ', d.lastname) AS doctorName,
+              h.startDate, h.endDate
+       FROM holidays h
+       JOIN doctors d ON d.id = h.doctorId
+       WHERE h.id = ?`,
+      [id]
+    );
+    res.json(toApi(updated, req));
+  } catch (err) {
+    console.error('HOLIDAYS PUT error:', err);
+    res.status(500).json({ error: err.mesage });
+  }
 });
 
-/* DELETE /holidays/:id */
-router.delete('/:id', (req, res) => {
+/* -------------------------------------------------
+   DELETE /holidays/:id – remove a holiday
+   ------------------------------------------------- */
+router.delete('/:id', async (req, res) => {
   const id = Number(req.params.id);
-  db.run('DELETE FROM holidays WHERE id = ?', [id], function (err) {
-    if (err) return res.status(500).json({ error: err.message });
-    if (this.changes === 0) return res.status(404).json({ error: 'Holiday not found' });
+  try {
+    const result = await db.run('DELETE FROM holidays WHERE id = ?', [id]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Holiday not found' });
+    }
     res.json({ message: 'Holiday deleted' });
-  });
+  } catch (err) {
+    console.error('HOLIDAYS DELETE error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

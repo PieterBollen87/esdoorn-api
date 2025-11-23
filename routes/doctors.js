@@ -1,21 +1,21 @@
 // routes/doctors.js
 const express = require('express');
 const router = express.Router();
-const db = require('../db');
-const multer = require('multer');
+const db = require('../db');            // MySQL wrapper
 const path = require('path');
 const fs = require('fs');
+const multer = require('multer');
+const { requireAdmin } = require('../middleware/auth');
 
-// -----------------------------------------------------------------
-// Multer configuration – store images in ./uploads/
-// -----------------------------------------------------------------
+// ------------------------------------------------
+// Multer setup – store uploaded avatars in ./uploads
+// ------------------------------------------
 const uploadDir = path.join(__dirname, '..', 'uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: (_, __, cb) => cb(null, uploadDir),
   filename: (_, file, cb) => {
-    // keep original extension, prepend timestamp to avoid collisions
     const ext = path.extname(file.originalname);
     const name = `${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`;
     cb(null, name);
@@ -23,15 +23,15 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// -----------------------------------------------------------------
-// Helper – convert DB row → API object (adds full URL for image)
-// -----------------------------------------------------------------
-function toApiObject(row, req) {
+// ---------------------------------------------
+// Helper – turn a DB row into the API shape (adds image URL)
+// -------------------------------------------------
+function toApi(row, req) {
   const host = `${req.protocol}://${req.get('host')}`;
   return {
     id: row.id,
     firstname: row.firstname,
-    lastname: row.lastname,
+   lastname: row.lastname,
     email: row.email,
     phone: row.phone,
     agendaUrl: row.agendaUrl,
@@ -39,139 +39,130 @@ function toApiObject(row, req) {
   };
 }
 
-// -----------------------------------------------------------------
-// GET /doctors – list all doctors
-// -----------------------------------------------------------------
-router.get('/', (req, res) => {
-  db.all('SELECT * FROM doctors ORDER BY lastname, firstname', [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    const result = rows.map(r => toApiObject(r, req));
+/* ---------------------------------------------
+   GET /doctors – list all doctors (admin only)
+   ------------------------------------------------- */
+router.get('/', async (req, res) => {
+  try {
+    const rows = await db.query('SELECT * FROM doctors ORDER BY lastname, firstname');
+    const result = rows.map(r => toApi(r, req));
     res.json(result);
-  });
+  } catch (err) {
+    console.error('DOCTORS GET error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// -----------------------------------------------------------------
-// GET /doctors/:id – single doctor
-// -----------------------------------------------------------------
-router.get('/:id', (req, res) => {
+/* -------------------------------------------------
+   GET /doctors/:id – single doctor
+   ------------------------------------------------- */
+router.get('/:id', async (req, res) => {
   const id = Number(req.params.id);
-  db.get('SELECT * FROM doctors WHERE id = ?', [id], (err, row) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (!row) return res.status(404).json({ error: 'Doctor not found' });
-    res.json(toApiObject(row, req));
-  });
+  try {
+    const rows = await db.query('SELECT * FROM doctors WHERE id = ?', [id]);
+    const doctor = rows[0];
+    if (!doctor) return res.status(404).json({ error: 'Doctor not found' });
+    res.json(toApi(doctor, req));
+  } catch (err) {
+    console.error('DOCTORS GET/:id error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// --------------------------------------------------------
-// POST /doctors – create a new doctor (multipart/form-data)
-// -----------------------------------------------------------------
-router.post('/', upload.single('image'), (req, res) => {
+/* -------------------------------------------------
+   POST /doctors – create a new doctor (multipart)
+   ------------------------------------------------- */
+router.post('/', upload.single('image'), async (req, res) => {
   const { firstname, lastname, email, phone, agendaUrl } = req.body;
   const imagePath = req.file ? req.file.filename : null;
 
-  // Very light validation – you can replace with Joi/Yup if you like
   if (!firstname || !lastname || !email || !phone || !agendaUrl) {
-    // delete uploaded file if validation fails
-    if (imagePath) fs.unlinkSync(path.join(uploadDir, imagePath));
+    if (imagePath) await fs.promises.unlink(path.join(uploadDir, imagePath));
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
-  const sql = `
-    INSERT INTO doctors (firstname, lastname, email, phone, agendaUrl, imagePath)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `;
-  const params = [firstname, lastname, email, phone, agendaUrl, imagePath];
-
-  db.run(sql, params, function (err) {
-    if (err) {
-      if (imagePath) fs.unlinkSync(path.join(uploadDir, imagePath));
-      return res.status(500).json({ error: err.message });
-    }
-    // Return the newly created record
-    db.get('SELECT * FROM doctors WHERE id = ?', [this.lastID], (e, row) => {
-      if (e) return res.status(500).json({ error: e.message });
-      res.status(201).json(toApiObject(row, req));
-    });
-  });
+  try {
+    const result = await db.pool.execute(
+      `INSERT INTO doctors (firstname, lastname, email, phone, agendaUrl, imagePath)
+       VALUES (?,?,?,?,?,?)`,
+      [firstname, lastname, email, phone, agendaUrl, imagePath]
+    );
+    const insertId = result[0].insertId;
+    const newDocRows = await db.query('SELECT * FROM doctors WHERE id = ?', [insertId]);
+    const newDoc = newDocRows[0];
+    res.status(201).json(toApi(newDoc, req));
+  } catch (err) {
+    if (imagePath) await fs.promises.unlink(path.join(uploadDir, imagePath));
+    console.error('DOCTORS POST error:', err);
+    res.status(500).json({ error: err.message });
+ }
 });
 
-// --------------------------------------------------------
-// PUT /doctors/:id – update a doctor (multipart/form-data)
-// -----------------------------------------------------------------
-router.put('/:id', upload.single('image'), (req, res) => {
+/* -------------------------------------------------
+   PUT /doctors/:id – update an existing doctor
+   ------------------------------------------------- */
+router.put('/:id', upload.single('image'), async (req, res) => {
   const id = Number(req.params.id);
   const { firstname, lastname, email, phone, agendaUrl } = req.body;
-  const newImage = req.file ? req.file.filename : null;
 
-  // First fetch the existing row (to know current imagePath)
-  db.get('SELECT * FROM doctors WHERE id = ?', [id], (err, oldRow) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (!oldRow) {
-      if (newImage) fs.unlinkSync(path.join(uploadDir, newImage));
-      return res.status(404).json({ error: 'Doctor not found' });
+  // Load the existing row first (to keep the old image if not replaced)
+  const oldRows = await db.query('SELECT * FROM doctors WHERE id = ?', [id]);
+  const old = oldRows[0];
+  if (!old) return res.status(404).json({ error: 'Doctor not found' });
+
+  const newImage = req.file ? req.file.filename : old.imagePath; // keep old if no new upload
+
+  try {
+    await db.pool.execute(
+      `UPDATE doctors SET firstname=?, lastname=?, email=?, phone=?, agendaUrl=?, imagePath=? WHERE id=?`,
+      [
+        firstname || old.firstname,
+        lastname  || old.lastname,
+        email     || old.email,
+        phone     || old.phone,
+        agendaUrl || old.agendaUrl,
+        newImage,
+        id
+      ]
+    );
+
+    // If we replaced the image, delete the old file
+    if (req.file && old.imagePath) {
+      const oldPath = path.join(uploadDir, old.imagePath);
+      if (fs.existsSync(oldPath)) await fs.promises.unlink(oldPath);
     }
 
-    const imagePath = newImage ? newImage : oldRow.imagePath;
-
-    const sql = `
-      UPDATE doctors
-      SET firstname = ?, lastname = ?, email = ?, phone = ?, agendaUrl = ?, imagePath = ?
-      WHERE id = ?
-    `;
-    const params = [
-      firstname ?? oldRow.firstname,
-      lastname ?? oldRow.lastname,
-      email ?? oldRow.email,
-      phone ?? oldRow.phone,
-      agendaUrl ?? oldRow.agendaUrl,
-      imagePath,
-      id
-    ];
-
-    db.run(sql, params, function (e) {
-      if (e) {
-        if (newImage) fs.unlinkSync(path.join(uploadDir, newImage));
-        return res.status(500).json({ error: e.message });
-      }
-
-      // If we replaced the image, delete the old file
-      if (newImage && oldRow.imagePath) {
-        const oldPath = path.join(uploadDir, oldRow.imagePath);
-        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-      }
-
-      // Return the updated record
-      db.get('SELECT * FROM doctors WHERE id = ?', [id], (err2, updatedRow) => {
-        if (err2) return res.status(500).json({ error: err2.message });
-        res.json(toApiObject(updatedRow, req));
-      });
-    });
-  });
+    const updatedRows = await db.query('SELECT * FROM doctors WHERE id = ?', [id]);
+    res.json(toApi(updatedRows[0], req));
+  } catch (err) {
+    console.error('DOCTORS PUT error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// -----------------------------------------------------------------
-// DELETE /doctors/:id – remove a doctor (also deletes image)
-// -----------------------------------------------------------------
-router.delete('/:id', (req, res) => {
+/* -------------------------------------------------
+   DELETE /doctors/:id – remove a doctor (and its image)
+   -------------------------------------------- */
+router.delete('/:id', async (req, res) => {
   const id = Number(req.params.id);
+  const rows = await db.query('SELECT imagePath FROM doctors WHERE id = ?', [id]);
+  const doctor = rows[0];
+  if (!doctor) return res.status(404).json({ error: 'Doctor not found' });
 
-  // Grab the imagePath first so we can delete the file later
-  db.get('SELECT imagePath FROM doctors WHERE id = ?', [id], (err, row) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (!row) return res.status(404).json({ error: 'Doctor not found' });
+  try {
+    await db.pool.execute('DELETE FROM doctors WHERE id = ?', [id]);
 
-    db.run('DELETE FROM doctors WHERE id = ?', [id], function (e) {
-      if (e) return res.status(500).json({ error: e.message });
+    // Delete the avatar file if it existed
+    if (doctor.imagePath) {
+      const imgPath = path.join(uploadDir, doctor.imagePath);
+      if (fs.existsSync(imgPath)) await fs.promises.unlink(imgPath);
+    }
 
-      // Delete the image file if it existed
-      if (row.imagePath) {
-        const filePath = path.join(uploadDir, row.imagePath);
-        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-      }
-
-      res.json({ message: 'Doctor deleted' });
-    });
-  });
+    res.json({ message: 'Doctor deleted' });
+  } catch (err) {
+    console.error('DOCTORS DELETE error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

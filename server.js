@@ -5,6 +5,9 @@ const cors = require('cors');
 const helmet  = require('helmet');
 const path = require('path');
 
+const { verifyToken, requireAdmin } = require('./middleware/auth');
+
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -25,12 +28,12 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // ----------------------------------------------------------
 app.use('/auth', require('./routes/auth'));
 
-const verifyToken = require('./middleware/auth');
 app.use(verifyToken);   // <-- everything below needs auth
-app.use('/urgency', require('./routes/urgency'));
-app.use('/doctors', require('./routes/doctors'));
-app.use('/holidays', require('./routes/holidays'));
-app.use('/welcome', require('./routes/welcome'));
+app.use('/urgency', requireAdmin, require('./routes/urgency'));
+app.use('/doctors', requireAdmin, require('./routes/doctors'));
+app.use('/holidays', requireAdmin, require('./routes/holidays'));
+app.use('/welcome', requireAdmin, require('./routes/welcome'));
+app.use('/users', requireAdmin, require('./routes/users'));
 
 // -----------------------------------------------------------------
 // Simple health‑check
