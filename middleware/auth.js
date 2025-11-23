@@ -23,6 +23,8 @@ function verifyToken(req, res, next) {
 }
 /* Admin‑only guard */
 function requireAdmin(req, res, next) {
+    console.log(' request: ' , req);
+
   if (req.user && req.user.role === 'admin') return next();
   return res.status(403).json({ error: 'Admin privileges required' });
 }
