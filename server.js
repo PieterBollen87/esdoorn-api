@@ -60,6 +60,8 @@ if (process.env.NODE_ENV === 'development') {
   } else {
     // Production – plain HTTP (behind a reverse‑proxy that terminates TLS)
     app.listen(PORT, () => console.log(`🚀 API listening on http://localhost:${PORT}`));
+    console.log(`🔐 HTTPS server listening on https://localhost:${PORT}`);
+    console.log('test xx');
   }
 
 // // -----------------------------------------------------------------
