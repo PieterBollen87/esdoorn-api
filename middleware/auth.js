@@ -14,7 +14,7 @@ function verifyToken(req, res, next) {
     if (err) return res.status(401).json({ error: 'Invalid or expired token' });
 
     // payload contains sub (user id) and role (admin/user)
-    const user = await db.get('SELECT id, username, role FROM users WHERE id = ?', [payload.sub]);
+    const user = await db.query('SELECT id, username, role FROM users WHERE id = ?', [payload.sub]);
     if (!user) return res.status(401).json({ error: 'User not found' });
 
     req.user = { id: user.id, username: user.username, role: user.role };
