@@ -22,7 +22,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Serve uploaded images
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
+app.use('/users', require('./routes/users'));
 // -----------------------------------------------------------------
 // Route registration
 // ----------------------------------------------------------
@@ -33,7 +33,7 @@ app.use('/urgency', requireAdmin, require('./routes/urgency'));
 app.use('/doctors', requireAdmin, require('./routes/doctors'));
 app.use('/holidays', requireAdmin, require('./routes/holidays'));
 app.use('/welcome', requireAdmin, require('./routes/welcome'));
-app.use('/users', requireAdmin, require('./routes/users'));
+// app.use('/users', requireAdmin, require('./routes/users'));
 
 // -----------------------------------------------------------------
 // Simple health‑check

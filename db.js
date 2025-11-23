@@ -5,11 +5,11 @@ const mysql = require('mysql2/promise');
 // 1️⃣ Build a connection pool
 // -----------------------------------------------
 const pool = mysql.createPool({
-  host:     process.env.MYSQL_HOST    || '127.0.0.1',
-  port:     parseInt(process.env.MYSQL_PORT, 10) || 3306,
-  user:     process.env.MYSQL_USER     || 'root',
- password: process.env.MYSQL_PASSWORD || '',
-  database: process.env.MYSQL_DB       || 'esdoorn',
+  host:     process.env.MYSQL_DB_HOST    || '127.0.0.1',
+  port:     parseInt(process.env.MYSQL_DB_PORT, 10) || 3306,
+  user:     process.env.MYSQL_DB_USER     || 'root',
+ password: process.env.MYSQL_DB_PASSWORD || '',
+  database: process.env.MYSQL_DB_NAME       || 'esdoorn',
   waitForConnections: true,
   connectionLimit: 10,          // adjust to your traffic
   queueLimit: 0

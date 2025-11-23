@@ -26,12 +26,14 @@ router.post('/login', loginLimiter, async (req, res) => {
   }
 
   try {
+      console.log(' getting user');
     // SELECT * FROM users WHERE username = ?
     const users = await db.query(
       'SELECT * FROM users WHERE username = ?',
       [username]
     );
     const user = users[0];
+    console.log(user);
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
     const match = await bcrypt.compare(password, user.passwordHash);
