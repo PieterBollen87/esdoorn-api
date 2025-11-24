@@ -46,7 +46,7 @@ function toApi(row, req) {
    ------------------------------------------------- */
 router.get('/', async (req, res) => {
   try {
-    const rows = await db.query('SELECT * FROM doctors ORDER BY lastname, firstname');
+    const rows = await db.query('SELECT * FROM doctors ORDER BY id');
     const result = rows.map(r => toApi(r, req));
     res.json(result);
   } catch (err) {
