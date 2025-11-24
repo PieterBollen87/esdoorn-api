@@ -84,7 +84,7 @@ router.post('/', verifyToken, requireAdmin, upload.single('image'), async (req, 
 
   try {
     const [result] = await db.pool.execute(
-      `INSERT INTO doctors (firstname, lastname, email, phone, agendaUrl, imagePath)
+      `INSERT INTO doctors (firstname, lastname, email, phone, agendaUrl, imageBase64)
        VALUES (?,?,?,?,?,?)`,
       [firstname, lastname, email, phone, agendaUrl, imageBase64]
     );
