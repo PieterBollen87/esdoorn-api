@@ -35,7 +35,9 @@ function toApi(row, req) {
     email: row.email,
     phone: row.phone,
     agendaUrl: row.agendaUrl,
-    imageUrl: row.imagePath ? `${host}/uploads/${row.imagePath}` : null
+    imageUrl: row.imageBase64
+    ? `data:image/jpeg;base64,${row.imageBase64}`
+    : null
   };
 }
 
@@ -109,7 +111,9 @@ router.put('/:id', verifyToken, requireAdmin, upload.single('image'), async (req
   const old = oldRows[0];
   if (!old) return res.status(404).json({ error: 'Doctor not found' });
 
-  const newImage = req.file ? req.file.filename : old.imagePath; // keep old if no new upload
+  const imageBase64 = req.file
+  ? req.file.buffer.toString('base64')
+  : old.imageBase64;
 
   try {
     await db.pool.execute(
@@ -120,7 +124,7 @@ router.put('/:id', verifyToken, requireAdmin, upload.single('image'), async (req
         email     || old.email,
         phone     || old.phone,
         agendaUrl || old.agendaUrl,
-        newImage,
+        imageBase64,
         id
       ]
     );
