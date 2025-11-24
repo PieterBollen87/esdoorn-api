@@ -83,17 +83,17 @@ router.post('/', verifyToken, requireAdmin, upload.single('image'), async (req, 
   }
 
   try {
-    const result = await db.pool.execute(
+    const [result] = await db.pool.execute(
       `INSERT INTO doctors (firstname, lastname, email, phone, agendaUrl, imagePath)
        VALUES (?,?,?,?,?,?)`,
       [firstname, lastname, email, phone, agendaUrl, imageBase64]
     );
-    const insertId = result[0].insertId;
-    const newDocRows = await db.query('SELECT * FROM doctors WHERE id = ?', [insertId]);
-    const newDoc = newDocRows[0];
-    res.status(201).json(toApi(newDoc, req));
+    console.log(result);
+    const insertId = result.insertId;
+    const rows = await db.query('SELECT * FROM doctors WHERE id = ?', [insertId]);
+    // const newDoc = newDocRows[0];
+    res.status(201).json(toApi(rows[0], req));
   } catch (err) {
-    if (imagePath) await fs.promises.unlink(path.join(uploadDir, imageBase64));
     console.error('DOCTORS POST error:', err);
     res.status(500).json({ error: err.message });
  }
