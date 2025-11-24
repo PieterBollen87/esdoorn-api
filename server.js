@@ -27,12 +27,10 @@ app.use('/users', require('./routes/users'));
 // Route registration
 // ----------------------------------------------------------
 app.use('/auth', require('./routes/auth'));
-
-app.use(verifyToken);   // <-- everything below needs auth
-app.use('/urgency', requireAdmin, require('./routes/urgency'));
-app.use('/doctors', requireAdmin, require('./routes/doctors'));
-app.use('/holidays', requireAdmin, require('./routes/holidays'));
-app.use('/welcome', requireAdmin, require('./routes/welcome'));
+app.use('/urgency', require('./routes/urgency'));
+app.use('/doctors', require('./routes/doctors'));
+app.use('/holidays', require('./routes/holidays'));
+app.use('/welcome', require('./routes/welcome'));
 // app.use('/users', requireAdmin, require('./routes/users'));
 
 // -----------------------------------------------------------------

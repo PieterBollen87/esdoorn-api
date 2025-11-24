@@ -5,7 +5,7 @@ const db = require('../db');            // MySQL wrapper
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
-const { requireAdmin } = require('../middleware/auth');
+const { verifyToken, requireAdmin } = require('../middleware/auth');
 
 // ------------------------------------------------
 // Multer setup – store uploaded avatars in ./uploads
@@ -72,7 +72,7 @@ router.get('/:id', async (req, res) => {
 /* -------------------------------------------------
    POST /doctors – create a new doctor (multipart)
    ------------------------------------------------- */
-router.post('/', upload.single('image'), async (req, res) => {
+router.post('/', verifyToken, requireAdmin, upload.single('image'), async (req, res) => {
   const { firstname, lastname, email, phone, agendaUrl } = req.body;
   const imagePath = req.file ? req.file.filename : null;
 
@@ -101,7 +101,7 @@ router.post('/', upload.single('image'), async (req, res) => {
 /* -------------------------------------------------
    PUT /doctors/:id – update an existing doctor
    ------------------------------------------------- */
-router.put('/:id', upload.single('image'), async (req, res) => {
+router.put('/:id', verifyToken, requireAdmin, upload.single('image'), async (req, res) => {
   const id = Number(req.params.id);
   const { firstname, lastname, email, phone, agendaUrl } = req.body;
 
@@ -143,7 +143,7 @@ router.put('/:id', upload.single('image'), async (req, res) => {
 /* -------------------------------------------------
    DELETE /doctors/:id – remove a doctor (and its image)
    -------------------------------------------- */
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', verifyToken, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   const rows = await db.query('SELECT imagePath FROM doctors WHERE id = ?', [id]);
   const doctor = rows[0];

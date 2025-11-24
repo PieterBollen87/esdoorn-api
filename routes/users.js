@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const bcrypt = require('bcrypt');
-const { requireAdmin } = require('../middleware/auth');
+const { verifyToken, requireAdmin } = require('../middleware/auth');
 
 
 /**
@@ -54,7 +54,7 @@ router.get('/', async (req, res) => {
  *
  * Returns: { id, username, role }
  */
-router.post('/', requireAdmin, async (req, res) => {
+router.post('/',verifyToken, requireAdmin, async (req, res) => {
   const { username, password, role = 'admin' } = req.body;
 
   // -----------------------------------------------------------------

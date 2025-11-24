@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { verifyToken, requireAdmin } = require('../middleware/auth');
 
 /**
  * Helper – convert a DB row to the API shape.

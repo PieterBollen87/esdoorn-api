@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { verifyToken, requireAdmin } = require('../middleware/auth');
 
 /**
  * GET /welcome
@@ -24,7 +25,7 @@ router.get('/', async (req, res) => {
  * Updates (or creates) the welcome HTML.
  * Body: { html: "<p>…</p>" }
  */
-router.put('/', async (req, res) => {
+router.put('/', verifyToken, requireAdmin, async (req, res) => {
   const { html } = req.body;
   if (typeof html !== 'string') {
     return res.status(400).json({ error: 'html field required' });
