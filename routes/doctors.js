@@ -13,7 +13,7 @@ const { verifyToken, requireAdmin } = require('../middleware/auth');
 const uploadDir = path.join(__dirname, '..', 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
-const storage = multer.diskStorage({
+const storage = multer.memoryStorage({
   destination: (_, __, cb) => cb(null, uploadDir),
   filename: (_, file, cb) => {
     const ext = path.extname(file.originalname);
@@ -74,10 +74,9 @@ router.get('/:id', async (req, res) => {
    ------------------------------------------------- */
 router.post('/', verifyToken, requireAdmin, upload.single('image'), async (req, res) => {
   const { firstname, lastname, email, phone, agendaUrl } = req.body;
-  const imagePath = req.file ? req.file.filename : null;
+  const imageBase64 = req.file ? req.file.buffer.toString('base64') : null;
 
   if (!firstname || !lastname || !email || !phone || !agendaUrl) {
-    if (imagePath) await fs.promises.unlink(path.join(uploadDir, imagePath));
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
@@ -85,14 +84,14 @@ router.post('/', verifyToken, requireAdmin, upload.single('image'), async (req, 
     const result = await db.pool.execute(
       `INSERT INTO doctors (firstname, lastname, email, phone, agendaUrl, imagePath)
        VALUES (?,?,?,?,?,?)`,
-      [firstname, lastname, email, phone, agendaUrl, imagePath]
+      [firstname, lastname, email, phone, agendaUrl, imageBase64]
     );
     const insertId = result[0].insertId;
     const newDocRows = await db.query('SELECT * FROM doctors WHERE id = ?', [insertId]);
     const newDoc = newDocRows[0];
     res.status(201).json(toApi(newDoc, req));
   } catch (err) {
-    if (imagePath) await fs.promises.unlink(path.join(uploadDir, imagePath));
+    if (imagePath) await fs.promises.unlink(path.join(uploadDir, imageBase64));
     console.error('DOCTORS POST error:', err);
     res.status(500).json({ error: err.message });
  }
