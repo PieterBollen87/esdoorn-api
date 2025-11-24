@@ -117,7 +117,7 @@ router.put('/:id', verifyToken, requireAdmin, upload.single('image'), async (req
 
   try {
     await db.pool.execute(
-      `UPDATE doctors SET firstname=?, lastname=?, email=?, phone=?, agendaUrl=?, imagePath=? WHERE id=?`,
+      `UPDATE doctors SET firstname=?, lastname=?, email=?, phone=?, agendaUrl=?, imageBase64=? WHERE id=?`,
       [
         firstname || old.firstname,
         lastname  || old.lastname,
