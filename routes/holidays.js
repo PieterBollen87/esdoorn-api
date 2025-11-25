@@ -20,7 +20,7 @@ function toApi(row, req) {
 /* -------------------------------------------------
    GET /holidays – list all holiday entries (admin only)
    ------------------------------------------------- */
-router.get('/', verifyToken, requireAdmin, async (req, res) => {
+router.get('/', async (req, res) => {
   const sql = `
     SELECT h.id, h.doctorId,
            CONCAT(d.firstname, ' ', d.lastname) AS doctorName,
@@ -41,7 +41,7 @@ router.get('/', verifyToken, requireAdmin, async (req, res) => {
 /* -------------------------------------------------
    GET /holidays/:id – single holiday
    ------------------------------------------------- */
-router.get('/:id', verifyToken, requireAdmin, async (req, res) => {
+router.get('/:id', async (req, res) => {
   const id = Number(req.params.id);
   const sql = `
     SELECT h.id, h.doctorId,
