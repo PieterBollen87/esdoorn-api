@@ -171,11 +171,13 @@ router.delete('/:id', verifyToken, requireAdmin, async (req, res) => {
 const moment = require('moment'); // Use moment.js for date handling
 
 // Route to get all doctors with their holidays where the endDate is after today
+// Route to get all doctors with their holidays where the endDate is after today
 router.get('/doctors-with-holidays', async (req, res) => {
   try {
     // Get today's date in 'YYYY-MM-DD' format
-    const today = moment().format('YYYY-MM-DD');
-    
+    const today = new Date();
+    const todayFormatted = today.toISOString().split('T')[0]; // Format: 'YYYY-MM-DD'
+
     // Query to fetch doctors and their holidays where the holiday endDate is after today
     const sql = `
       SELECT 
@@ -191,7 +193,7 @@ router.get('/doctors-with-holidays', async (req, res) => {
       ORDER BY d.id, h.startDate;
     `;
     
-    const rows = await db.query(sql, [today]);
+    const rows = await db.query(sql, [todayFormatted]);
     
     // Process the rows to organize them by doctor
     const doctorsWithHolidays = rows.reduce((acc, row) => {
@@ -228,6 +230,7 @@ router.get('/doctors-with-holidays', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 
 module.exports = router;
