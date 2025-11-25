@@ -170,7 +170,7 @@ router.delete('/:id', verifyToken, requireAdmin, async (req, res) => {
 
 // Route to get all doctors with their holidays where the endDate is after today
 // Route to get all doctors with their holidays where the endDate is after today
-router.get('/doctors-with-holidays', async (req, res) => {
+router.get('/doctors/holidays', async (req, res) => {
   try {
     // Get today's date in 'YYYY-MM-DD' format
     const today = new Date();

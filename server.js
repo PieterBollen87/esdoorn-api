@@ -40,7 +40,7 @@ app.get('/', (req, res) => {
   res.json({
     status: 'OK',
     message: 'esdoorn‑api is running',
-    endpoints: ['/welcome', '/doctors', '/urgency', '/holidays']
+    endpoints: ['/welcome', '/doctors', '/urgency', '/holidays', '/doctors/holidays', '/doctors_with_holidays']
   });
 });
 
