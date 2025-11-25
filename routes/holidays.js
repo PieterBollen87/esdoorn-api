@@ -76,7 +76,7 @@ router.post('/', verifyToken, requireAdmin, async (req, res) => {
   try {
     const result = await db.query(sql, [doctorId, startDate, endDate]);
     // Return the freshly created row with doctorName
-    const row = await db.get(`
+    const row = await db.query(`
       SELECT h.id, h.doctorId,
              CONCAT(d.firstname, ' ', d.lastname) AS doctorName,
              h.startDate, h.endDate
