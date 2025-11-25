@@ -100,7 +100,7 @@ router.put('/:id', verifyToken, requireAdmin, async (req, res) => {
   const { doctorId, startDate, endDate } = req.body;
 
   // Load existing row
-  const old = await db.get('SELECT * FROM holidays WHERE id = ?', [id]);
+  const old = await db.query('SELECT * FROM holidays WHERE id = ?', [id]);
   if (!old) return res.status(404).json({ error: 'Holiday not found' });
 
   const sql = `UPDATE holidays SET doctorId=?, startDate=?, endDate=? WHERE id=?`;
@@ -135,7 +135,7 @@ router.put('/:id', verifyToken, requireAdmin, async (req, res) => {
 router.delete('/:id', verifyToken, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   try {
-    const result = await db.run('DELETE FROM holidays WHERE id = ?', [id]);
+    const result = await db.query('DELETE FROM holidays WHERE id = ?', [id]);
     if (result.affectedRows === 0) return res.status(404).json({ error: 'Holiday not found' });
     res.json({ message: 'Holiday deleted' });
   } catch (err) {
