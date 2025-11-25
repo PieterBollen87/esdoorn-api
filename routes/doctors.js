@@ -168,4 +168,66 @@ router.delete('/:id', verifyToken, requireAdmin, async (req, res) => {
   }
 });
 
+const moment = require('moment'); // Use moment.js for date handling
+
+// Route to get all doctors with their holidays where the endDate is after today
+router.get('/doctors-with-holidays', async (req, res) => {
+  try {
+    // Get today's date in 'YYYY-MM-DD' format
+    const today = moment().format('YYYY-MM-DD');
+    
+    // Query to fetch doctors and their holidays where the holiday endDate is after today
+    const sql = `
+      SELECT 
+        d.id AS doctorId, 
+        d.firstname, 
+        d.lastname, 
+        h.id AS holidayId, 
+        h.startDate, 
+        h.endDate
+      FROM doctors d
+      LEFT JOIN holidays h ON d.id = h.doctorId
+      WHERE h.endDate > ? OR h.endDate IS NULL
+      ORDER BY d.id, h.startDate;
+    `;
+    
+    const rows = await db.query(sql, [today]);
+    
+    // Process the rows to organize them by doctor
+    const doctorsWithHolidays = rows.reduce((acc, row) => {
+      const doctorId = row.doctorId;
+      
+      // If the doctor is not in the accumulator, add them
+      if (!acc[doctorId]) {
+        acc[doctorId] = {
+          id: doctorId,
+          firstname: row.firstname,
+          lastname: row.lastname,
+          holidays: []
+        };
+      }
+      
+      // Add the holiday to the doctor's list of holidays
+      if (row.holidayId) {
+        acc[doctorId].holidays.push({
+          id: row.holidayId,
+          startDate: row.startDate,
+          endDate: row.endDate
+        });
+      }
+
+      return acc;
+    }, {});
+
+    // Convert the object to an array of doctors with their holidays
+    const result = Object.values(doctorsWithHolidays);
+    
+    res.json(result);
+  } catch (err) {
+    console.error('Error fetching doctors with holidays:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 module.exports = router;
