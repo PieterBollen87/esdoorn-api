@@ -5,11 +5,9 @@ const db = require('../db');
 const { verifyToken, requireAdmin } = require('../middleware/auth');
 
 /**
- * Helper – convert a DB row to the API shape.
- * Includes the doctor's full name for convenience.
+ * Helper – convert a DB row to the API shape
  */
 function toApi(row, req) {
-  const host = `${req.protocol}://${req.get('host')}`;
   return {
     id: row.id,
     doctorId: row.doctorId,
@@ -20,9 +18,9 @@ function toApi(row, req) {
 }
 
 /* -------------------------------------------------
-   GET /holidays – list all holiday entries
+   GET /holidays – list all holiday entries (admin only)
    ------------------------------------------------- */
-router.get('/', async (req, res) => {
+router.get('/', verifyToken, requireAdmin, async (req, res) => {
   const sql = `
     SELECT h.id, h.doctorId,
            CONCAT(d.firstname, ' ', d.lastname) AS doctorName,
@@ -32,9 +30,8 @@ router.get('/', async (req, res) => {
     ORDER BY h.startDate DESC
   `;
   try {
-    const rows = await db.all(sql);
-    const result = rows.map(r => toApi(r, req));
-    res.json(result);
+    const rows = await db.query(sql);
+    res.json(rows.map(r => toApi(r, req)));
   } catch (err) {
     console.error('HOLIDAYS GET error:', err);
     res.status(500).json({ error: err.message });
@@ -44,7 +41,7 @@ router.get('/', async (req, res) => {
 /* -------------------------------------------------
    GET /holidays/:id – single holiday
    ------------------------------------------------- */
-router.get('/:id', async (req, res) => {
+router.get('/:id', verifyToken, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   const sql = `
     SELECT h.id, h.doctorId,
@@ -67,51 +64,44 @@ router.get('/:id', async (req, res) => {
 /* -------------------------------------------------
    POST /holidays – create a new holiday
    ------------------------------------------------- */
-router.post('/', async (req, res) => {
+router.post('/', verifyToken, requireAdmin, async (req, res) => {
   const { doctorId, startDate, endDate } = req.body;
   if (!doctorId || !startDate || !endDate) {
     return res.status(400).json({ error: 'doctorId, startDate and endDate required' });
   }
 
-  const sql = `
-    INSERT INTO holidays (doctorId, startDate, endDate)
-    VALUES (?,?,?)
-  `;
+  const sql = `INSERT INTO holidays (doctorId, startDate, endDate) VALUES (?,?,?)`;
   try {
     const result = await db.run(sql, [doctorId, startDate, endDate]);
-    // Return the freshly created row (including doctor name)
-    const created = await db.get(
-      `SELECT h.id, h.doctorId,
-              CONCAT(d.firstname, ' ', d.lastname) AS doctorName,
-              h.startDate, h.endDate
-       FROM holidays h
-       JOIN doctors d ON d.id = h.doctorId
-       WHERE h.id = ?`,
+    // Return the freshly created row with doctorName
+    const row = await db.get(`
+      SELECT h.id, h.doctorId,
+             CONCAT(d.firstname, ' ', d.lastname) AS doctorName,
+             h.startDate, h.endDate
+      FROM holidays h
+      JOIN doctors d ON d.id = h.doctorId
+      WHERE h.id = ?`,
       [result.insertId]
     );
-    res.status(201).json(toApi(created, req));
+    res.status(201).json(toApi(row, req));
   } catch (err) {
     console.error('HOLIDAYS POST error:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-/* -----------------------------------------
+/* -------------------------------------------------
    PUT /holidays/:id – update an existing holiday
    ------------------------------------------------- */
-router.put('/:id', async (req, res) => {
+router.put('/:id', verifyToken, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   const { doctorId, startDate, endDate } = req.body;
 
-  // Load current row to keep unchanged fields
+  // Load existing row
   const old = await db.get('SELECT * FROM holidays WHERE id = ?', [id]);
   if (!old) return res.status(404).json({ error: 'Holiday not found' });
 
-  const sql = `
-    UPDATE holidays
-    SET doctorId = ?, startDate = ?, endDate = ?
-    WHERE id = ?
-  `;
+  const sql = `UPDATE holidays SET doctorId=?, startDate=?, endDate=? WHERE id=?`;
   try {
     await db.run(sql, [
       doctorId || old.doctorId,
@@ -120,32 +110,31 @@ router.put('/:id', async (req, res) => {
       id
     ]);
 
-    const updated = await db.get(
-      `SELECT h.id, h.doctorId,
-              CONCAT(d.firstname, ' ', d.lastname) AS doctorName,
-              h.startDate, h.endDate
-       FROM holidays h
-       JOIN doctors d ON d.id = h.doctorId
-       WHERE h.id = ?`,
+    const updated = await db.get(`
+      SELECT h.id, h.doctorId,
+             CONCAT(d.firstname, ' ', d.lastname) AS doctorName,
+             h.startDate, h.endDate
+      FROM holidays h
+      JOIN doctors d ON d.id = h.doctorId
+      WHERE h.id = ?`,
       [id]
     );
+
     res.json(toApi(updated, req));
   } catch (err) {
     console.error('HOLIDAYS PUT error:', err);
-    res.status(500).json({ error: err.mesage });
+    res.status(500).json({ error: err.message });
   }
 });
 
 /* -------------------------------------------------
    DELETE /holidays/:id – remove a holiday
    ------------------------------------------------- */
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', verifyToken, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   try {
     const result = await db.run('DELETE FROM holidays WHERE id = ?', [id]);
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: 'Holiday not found' });
-    }
+    if (result.affectedRows === 0) return res.status(404).json({ error: 'Holiday not found' });
     res.json({ message: 'Holiday deleted' });
   } catch (err) {
     console.error('HOLIDAYS DELETE error:', err);
