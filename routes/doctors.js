@@ -168,8 +168,6 @@ router.delete('/:id', verifyToken, requireAdmin, async (req, res) => {
   }
 });
 
-const moment = require('moment'); // Use moment.js for date handling
-
 // Route to get all doctors with their holidays where the endDate is after today
 // Route to get all doctors with their holidays where the endDate is after today
 router.get('/doctors-with-holidays', async (req, res) => {
