@@ -74,7 +74,7 @@ router.post('/', verifyToken, requireAdmin, async (req, res) => {
 
   const sql = `INSERT INTO holidays (doctorId, startDate, endDate) VALUES (?,?,?)`;
   try {
-    const result = await db.run(sql, [doctorId, startDate, endDate]);
+    const result = await db.query(sql, [doctorId, startDate, endDate]);
     // Return the freshly created row with doctorName
     const row = await db.get(`
       SELECT h.id, h.doctorId,
