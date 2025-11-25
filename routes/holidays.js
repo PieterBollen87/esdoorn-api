@@ -53,8 +53,9 @@ router.get('/:id', verifyToken, requireAdmin, async (req, res) => {
   `;
   try {
     const row = await db.query(sql, [id]);
-    if (!row) return res.status(404).json({ error: 'Holiday not found' });
-    res.json(toApi(row, req));
+    const holiday = rows[0];
+    if (!holiday) return res.status(404).json({ error: 'Holiday not found' });
+    res.json(toApi(holiday, req));
   } catch (err) {
     console.error('HOLIDAYS GET/:id error:', err);
     res.status(500).json({ error: err.message });
