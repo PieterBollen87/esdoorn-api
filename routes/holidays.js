@@ -105,14 +105,14 @@ router.put('/:id', verifyToken, requireAdmin, async (req, res) => {
 
   const sql = `UPDATE holidays SET doctorId=?, startDate=?, endDate=? WHERE id=?`;
   try {
-    await db.run(sql, [
+    await db.query(sql, [
       doctorId || old.doctorId,
       startDate || old.startDate,
       endDate   || old.endDate,
       id
     ]);
 
-    const updated = await db.get(`
+    const updated = await db.query(`
       SELECT h.id, h.doctorId,
              CONCAT(d.firstname, ' ', d.lastname) AS doctorName,
              h.startDate, h.endDate
