@@ -65,6 +65,7 @@ router.get('/:id', verifyToken, requireAdmin, async (req, res) => {
    POST /holidays – create a new holiday
    ------------------------------------------------- */
 router.post('/', verifyToken, requireAdmin, async (req, res) => {
+  console.log(req);
   const { doctorId, startDate, endDate } = req.body;
   console.log(req.body);
   if (!doctorId || !startDate || !endDate) {
