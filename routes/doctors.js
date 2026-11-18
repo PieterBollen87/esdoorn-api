@@ -26,9 +26,10 @@ const upload = multer({ storage });
 /**
  * Order of the doctors everywhere on the site:
  * 1. normal doctors, 2. HAIO (huisarts in opleiding), 3. "Vertegenwoordigers" always last.
+ * Within each group: the order set in the admin (sortOrder, by dragging), then id.
  */
 const ORDER = `ORDER BY (LOWER(TRIM(firstname)) LIKE 'vertegenwoordiger%' OR LOWER(TRIM(lastname)) LIKE 'vertegenwoordiger%'),
-               haio, id`;
+               haio, sortOrder, id`;
 
 /** Checkbox value from a multipart form: '1' / 'on' / 'true' = yes. Hidden '0' + checkbox '1' arrives as an array. */
 function readHaio(value) {
@@ -49,6 +50,7 @@ function toApi(row, req) {
     phone: row.phone,
     agendaUrl: row.agendaUrl,
     haio: !!row.haio,
+    sortOrder: row.sortOrder,
     imageUrl: row.imageBase64
     ? `data:image/jpeg;base64,${row.imageBase64}`
     : null
@@ -98,8 +100,8 @@ router.post('/', verifyToken, requireAdmin, upload.single('image'), async (req, 
 
   try {
     const [result] = await db.pool.execute(
-      `INSERT INTO doctors (firstname, lastname, email, phone, agendaUrl, imageBase64, haio)
-       VALUES (?,?,?,?,?,?,?)`,
+      `INSERT INTO doctors (firstname, lastname, email, phone, agendaUrl, imageBase64, haio, sortOrder)
+       SELECT ?,?,?,?,?,?,?, COALESCE(MAX(sortOrder), 0) + 1 FROM doctors`,   // new doctors go to the end
       [firstname, lastname, email, phone, agendaUrl, imageBase64, readHaio(req.body.haio)]
     );
     console.log(result);
@@ -111,6 +113,34 @@ router.post('/', verifyToken, requireAdmin, upload.single('image'), async (req, 
     console.error('DOCTORS POST error:', err);
     res.status(500).json({ error: err.message });
  }
+});
+
+/* -------------------------------------------------
+   PUT /doctors/order – save the order set in the admin (drag & drop)
+   Body: { ids: [3, 1, 2, ...] } – all doctor ids in the new order.
+   (Must stay above PUT /:id, otherwise "order" would be read as an id.)
+   ------------------------------------------------- */
+router.put('/order', verifyToken, requireAdmin, async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number) : null;
+  if (!ids || !ids.length || ids.some(id => !Number.isInteger(id) || id <= 0) || new Set(ids).size !== ids.length) {
+    return res.status(400).json({ error: 'ids must be a list of unique doctor ids' });
+  }
+  const conn = await db.pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    for (let i = 0; i < ids.length; i++) {
+      await conn.execute('UPDATE doctors SET sortOrder = ? WHERE id = ?', [i + 1, ids[i]]);
+    }
+    await conn.commit();
+    const rows = await db.query(`SELECT * FROM doctors ${ORDER}`);
+    res.json(rows.map(r => toApi(r, req)));
+  } catch (err) {
+    await conn.rollback();
+    console.error('DOCTORS ORDER error:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    conn.release();
+  }
 });
 
 /* -------------------------------------------------
