@@ -6,21 +6,6 @@ const bcrypt = require('bcrypt');
 const { verifyToken, requireAdmin } = require('../middleware/auth');
 
 
-/**
- * GET /users
- * Returns a list of all users (admin accounts). Only admins can call this.
- * Fields: id, username, role
- */
-router.get('/', async (req, res) => {
-  try {
-    const rows = await db.query('SELECT id, username, role FROM users ORDER BY username');
-    res.json(rows);
-  } catch (err) {
-    console.error('USERS GET error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // ----------------------------------------------------------------
 //  Users – create (admin‑only) & list (admin‑only)
 // ----------------------------------------------------------
@@ -31,7 +16,7 @@ router.get('/', async (req, res) => {
  * Admin‑only – the router is mounted after `verifyToken`,
  * and we additionally enforce `requireAdmin`.
  */
-router.get('/', async (req, res) => {
+router.get('/', verifyToken, requireAdmin, async (req, res) => {
   try {
     const rows = await db.query('SELECT id, username, role FROM users ORDER BY username');
     res.json(rows);

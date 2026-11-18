@@ -10,7 +10,7 @@ const { verifyToken, requireAdmin } = require('../middleware/auth');
  */
 router.get('/', async (req, res) => {
   try {
-    const row = await db.get('SELECT html FROM welcome WHERE id = 1');
+    const [row] = await db.query('SELECT html FROM welcome WHERE id = 1');
     // If the row does not exist yet, return an empty string
     const html = row ? row.html : '';
     res.json({ html });
@@ -37,7 +37,7 @@ router.put('/', verifyToken, requireAdmin, async (req, res) => {
   `;
 
   try {
-    await db.run(sql, [html]);
+    await db.query(sql, [html]);
     res.json({ id: 1, html });
   } catch (err) {
     console.error('WELCOME PUT error:', err);

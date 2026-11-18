@@ -21,8 +21,10 @@ const pool = mysql.createPool({
 async function query(sql, params) {
   // `pool.execute` returns [rows, fields]; we only need rows
   let [rows] = [];  
-  console.log('SQL', sql);
-  console.log('params: ', params);
+  if (process.env.DEBUG_SQL === 'true') {     // set DEBUG_SQL=true in .env to see queries
+    console.log('SQL', sql);
+    console.log('params: ', params);
+  }
   if (params === undefined || !params) {
         [rows] = await pool.execute(sql);
     } else {

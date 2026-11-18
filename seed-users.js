@@ -9,7 +9,8 @@ const bcrypt = require('bcrypt');
 (async () => {
   const username = 'Pieter';
   const email    = 'pieter@example.com';   // any dummy email works
-  const plainPwd = 'Slacking9-Jackal2-Showing1-Ample0-Agency3';   // <‑‑ change this to whatever you want
+  const plainPwd = process.argv[2];        // usage: node seed-users.js 'the-password'
+  if (!plainPwd) { console.error('Usage: node seed-users.js <password>'); process.exit(1); }
   const role     = 'admin';                // make him an admin (or 'user' if you prefer)
 
   try {

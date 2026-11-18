@@ -10,7 +10,7 @@ const { verifyToken, requireAdmin } = require('../middleware/auth');
  */
 router.get('/', async (req, res) => {
   try {
-    const row = await db.get('SELECT html FROM urgency WHERE id = 1');
+    const [row] = await db.query('SELECT html FROM urgency WHERE id = 1');
     const html = row ? row.html : '';
     res.json({ html });
   } catch (err) {
@@ -24,7 +24,7 @@ router.get('/', async (req, res) => {
  * Updates (or creates) the urgency HTML.
  * Body: { html: "<p>…</p>" }
  */
-router.put('/', async (req, res) => {
+router.put('/', verifyToken, requireAdmin, async (req, res) => {
   const { html } = req.body;
   if (typeof html !== 'string') {
     return res.status(400).json({ error: 'html field required' });
@@ -36,7 +36,7 @@ router.put('/', async (req, res) => {
   `;
 
   try {
-    await db.run(sql, [html]);
+    await db.query(sql, [html]);
     res.json({ id: 1, html });
   } catch (err) {
     console.error('URGENCY PUT error:', err);

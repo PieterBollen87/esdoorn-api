@@ -5,7 +5,7 @@ const db = require('../db');               // <-- now the MySQL wrapper
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
-const { requireAdmin } = require('../middleware/auth');
+const { verifyToken, requireAdmin, getJwtSecret } = require('../middleware/auth');
 
 // ------------------------------------------------
 // Rate limiter – 5 attempts per 5 min per IP
@@ -26,14 +26,12 @@ router.post('/login', loginLimiter, async (req, res) => {
   }
 
   try {
-      console.log(' getting user');
     // SELECT * FROM users WHERE username = ?
     const users = await db.query(
       'SELECT * FROM users WHERE username = ?',
       [username]
     );
     const user = users[0];
-    console.log(user);
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
     const match = await bcrypt.compare(password, user.password);
@@ -47,11 +45,12 @@ router.post('/login', loginLimiter, async (req, res) => {
       role: user.role               // 'admin' or 'user'
     };
 
-    const token = jwt.sign(
-      payload,
-      process.env.JWT_SECRET || 'CHANGE_ME_IN_PROD',
-      { expiresIn: '8h' }
-    );
+    const secret = getJwtSecret();
+    if (!secret) {
+      console.error('JWT_SECRET is not set in .env – login is disabled until it is.');
+      return res.status(503).json({ error: 'Server not configured for login (JWT_SECRET missing)' });
+    }
+    const token = jwt.sign(payload, secret, { expiresIn: '8h' });
 
     res.json({ token });
   } catch (err) {
@@ -63,7 +62,7 @@ router.post('/login', loginLimiter, async (req, res) => {
 /* -------------------------------------------------
    POST /auth/register – hash password before INSERT
    -------------------------------------------- */
-router.post('/register', requireAdmin, async (req, res) => {
+router.post('/register', verifyToken, requireAdmin, async (req, res) => {
   const { username, email, password, role = 'user' } = req.body;
 
   if (!username || !email || !password) {

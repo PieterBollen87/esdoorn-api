@@ -9,6 +9,9 @@ const { verifyToken, requireAdmin } = require('./middleware/auth');
 
 
 const app = express();
+if (!require('./middleware/auth').getJwtSecret()) {
+  console.error('⚠️  JWT_SECRET is missing in .env – admin login is DISABLED until you add it.');
+}
 const PORT = process.env.PORT || 3000;
 
 
