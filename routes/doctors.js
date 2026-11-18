@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');            // MySQL wrapper
 const multer = require('multer');
-const { verifyToken, requireAdmin, requireAdminOrDoctor } = require('../middleware/auth');
+const { verifyToken, requireAdmin, requireStaff, requireStaffOrDoctor, isStaff } = require('../middleware/auth');
 
 // ------------------------------------------------
 // Photo upload: kept in memory and stored in the database (imageBase64).
@@ -26,9 +26,9 @@ const upload = {
   })
 };
 
-/** A doctor account may only change its own doctor (admins: everyone) */
+/** A doctor account may only change its own doctor (admin + secretary: everyone) */
 function ownDoctorOnly(req, res, next) {
-  if (req.user.role === 'admin' || Number(req.params.id) === req.user.doctorId) return next();
+  if (isStaff(req.user) || Number(req.params.id) === req.user.doctorId) return next();
   return res.status(403).json({ error: 'Je kan enkel je eigen gegevens wijzigen.' });
 }
 
@@ -107,7 +107,7 @@ router.get('/:id', async (req, res) => {
 /* -------------------------------------------------
    POST /doctors – create a new doctor (multipart)
    ------------------------------------------------- */
-router.post('/', verifyToken, requireAdmin, upload.single('image'), async (req, res) => {
+router.post('/', verifyToken, requireStaff, upload.single('image'), async (req, res) => {
   const { firstname, lastname, email, phone, agendaUrl } = req.body;
   const imageBase64 = req.file ? req.file.buffer.toString('base64') : null;
 
@@ -137,7 +137,7 @@ router.post('/', verifyToken, requireAdmin, upload.single('image'), async (req, 
    Body: { ids: [3, 1, 2, ...] } – all doctor ids in the new order.
    (Must stay above PUT /:id, otherwise "order" would be read as an id.)
    ------------------------------------------------- */
-router.put('/order', verifyToken, requireAdmin, async (req, res) => {
+router.put('/order', verifyToken, requireStaff, async (req, res) => {
   const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number) : null;
   if (!ids || !ids.length || ids.some(id => !Number.isInteger(id) || id <= 0) || new Set(ids).size !== ids.length) {
     return res.status(400).json({ error: 'ids must be a list of unique doctor ids' });
@@ -163,7 +163,7 @@ router.put('/order', verifyToken, requireAdmin, async (req, res) => {
 /* -------------------------------------------------
    PUT /doctors/:id – update an existing doctor
    ------------------------------------------------- */
-router.put('/:id', verifyToken, requireAdminOrDoctor, ownDoctorOnly, upload.single('image'), async (req, res) => {
+router.put('/:id', verifyToken, requireStaffOrDoctor, ownDoctorOnly, upload.single('image'), async (req, res) => {
   const id = Number(req.params.id);
   const { firstname, lastname, email, phone, agendaUrl } = req.body;
 
@@ -186,8 +186,8 @@ router.put('/:id', verifyToken, requireAdminOrDoctor, ownDoctorOnly, upload.sing
         phone     || old.phone,
         agendaUrl || old.agendaUrl,
         imageBase64,
-        // HAIO: only an admin can change it; not sent → keep as it was
-        req.user.role !== 'admin' || req.body.haio === undefined ? old.haio : readHaio(req.body.haio),
+        // HAIO: only admin/secretary can change it; not sent → keep as it was
+        !isStaff(req.user) || req.body.haio === undefined ? old.haio : readHaio(req.body.haio),
         id
       ]
     );

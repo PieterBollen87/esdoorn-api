@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { verifyToken, requireAdmin } = require('../middleware/auth');
+const { verifyToken, requireStaff } = require('../middleware/auth');
 const { sanitizeHtml, isEmptyHtml } = require('../utils/sanitize-html');
 
 const SELECT = 'SELECT id, title, body, showOnHome, importantAt, createdAt, updatedAt FROM messages';
@@ -60,7 +60,7 @@ router.get('/:id', async (req, res) => {
 });
 
 /* POST /messages – create (admin) */
-router.post('/', verifyToken, requireAdmin, async (req, res) => {
+router.post('/', verifyToken, requireStaff, async (req, res) => {
   const data = readPayload(req.body);
   if (data.error) return res.status(400).json({ error: data.error });
   if (sameTitle(data.title, PROTECTED_TITLE)) {
@@ -79,7 +79,7 @@ router.post('/', verifyToken, requireAdmin, async (req, res) => {
 });
 
 /* PUT /messages/:id – update (admin) */
-router.put('/:id', verifyToken, requireAdmin, async (req, res) => {
+router.put('/:id', verifyToken, requireStaff, async (req, res) => {
   const id = Number(req.params.id);
   const data = readPayload(req.body);
   if (data.error) return res.status(400).json({ error: data.error });
@@ -106,7 +106,7 @@ router.put('/:id', verifyToken, requireAdmin, async (req, res) => {
 });
 
 /* DELETE /messages/:id – remove (admin) */
-router.delete('/:id', verifyToken, requireAdmin, async (req, res) => {
+router.delete('/:id', verifyToken, requireStaff, async (req, res) => {
   try {
     const [current] = await db.query(`${SELECT} WHERE id = ?`, [Number(req.params.id)]);
     if (current && sameTitle(current.title, PROTECTED_TITLE)) {

@@ -1,10 +1,10 @@
 // routes/holidays.js – leave ("verlof") of the doctors
 // Reading is public (the site shows it on the doctor cards).
-// Admin: can manage everyone's leave. Doctor account: only their own (doctorId from their account, never from the request).
+// Admin + secretary: can manage everyone's leave. Doctor account: only their own (doctorId from their account, never from the request).
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { verifyToken, requireAdminOrDoctor } = require('../middleware/auth');
+const { verifyToken, requireStaffOrDoctor, isStaff } = require('../middleware/auth');
 
 // Dates as plain 'YYYY-MM-DD' text, so no time zone can shift them by a day
 const SELECT = `
@@ -31,7 +31,7 @@ function targetDoctorId(req) {
 }
 
 /** A doctor may only change their own leave */
-const mayChange = (req, holiday) => req.user.role === 'admin' || holiday.doctorId === req.user.doctorId;
+const mayChange = (req, holiday) => isStaff(req.user) || holiday.doctorId === req.user.doctorId;
 
 /* GET /holidays – all leave (public) */
 router.get('/', async (req, res) => {
@@ -56,7 +56,7 @@ router.get('/:id', async (req, res) => {
 });
 
 /* POST /holidays – add leave */
-router.post('/', verifyToken, requireAdminOrDoctor, async (req, res) => {
+router.post('/', verifyToken, requireStaffOrDoctor, async (req, res) => {
   const dates = readDates(req.body);
   if (dates.error) return res.status(400).json({ error: dates.error });
   const doctorId = targetDoctorId(req);
@@ -74,7 +74,7 @@ router.post('/', verifyToken, requireAdminOrDoctor, async (req, res) => {
 });
 
 /* PUT /holidays/:id – change leave */
-router.put('/:id', verifyToken, requireAdminOrDoctor, async (req, res) => {
+router.put('/:id', verifyToken, requireStaffOrDoctor, async (req, res) => {
   const id = Number(req.params.id);
   const dates = readDates(req.body);
   if (dates.error) return res.status(400).json({ error: dates.error });
@@ -82,7 +82,7 @@ router.put('/:id', verifyToken, requireAdminOrDoctor, async (req, res) => {
     const [current] = await db.query(`${SELECT} WHERE h.id = ?`, [id]);
     if (!current) return res.status(404).json({ error: 'Verlof niet gevonden' });
     if (!mayChange(req, current)) return res.status(403).json({ error: 'Je kan enkel je eigen verlof wijzigen.' });
-    const doctorId = req.user.role === 'admin' && req.body.doctorId ? Number(req.body.doctorId) : current.doctorId;
+    const doctorId = isStaff(req.user) && req.body.doctorId ? Number(req.body.doctorId) : current.doctorId;
     await db.query('UPDATE holidays SET doctorId = ?, startDate = ?, endDate = ? WHERE id = ?',
       [doctorId, dates.startDate, dates.endDate, id]);
     const [holiday] = await db.query(`${SELECT} WHERE h.id = ?`, [id]);
@@ -94,7 +94,7 @@ router.put('/:id', verifyToken, requireAdminOrDoctor, async (req, res) => {
 });
 
 /* DELETE /holidays/:id */
-router.delete('/:id', verifyToken, requireAdminOrDoctor, async (req, res) => {
+router.delete('/:id', verifyToken, requireStaffOrDoctor, async (req, res) => {
   const id = Number(req.params.id);
   try {
     const [current] = await db.query(`${SELECT} WHERE h.id = ?`, [id]);

@@ -48,11 +48,25 @@ function requireAdmin(req, res, next) {
   return res.status(403).json({ error: 'Admin privileges required' });
 }
 
-/* Admin, or a doctor whose account is linked to a doctor (for "Mijn verlof") */
-function requireAdminOrDoctor(req, res, next) {
-  if (req.user && req.user.role === 'admin') return next();
+/*
+ * Roles:
+ *  admin      – everything
+ *  secretary  – messages, doctors (add/edit/order), everyone's leave, creating doctor accounts
+ *  doctor     – only their own leave and their own details (account linked via doctorId)
+ */
+const isStaff = user => !!user && (user.role === 'admin' || user.role === 'secretary');
+
+/* Admin or secretary */
+function requireStaff(req, res, next) {
+  if (isStaff(req.user)) return next();
+  return res.status(403).json({ error: 'Geen toegang' });
+}
+
+/* Admin, secretary, or a doctor whose account is linked to a doctor (for "Mijn verlof" / "Mijn gegevens") */
+function requireStaffOrDoctor(req, res, next) {
+  if (isStaff(req.user)) return next();
   if (req.user && req.user.role === 'doctor' && req.user.doctorId) return next();
   return res.status(403).json({ error: 'Geen toegang' });
 }
 
-module.exports = { verifyToken, requireAdmin, requireAdminOrDoctor, getJwtSecret };
+module.exports = { verifyToken, requireAdmin, requireStaff, requireStaffOrDoctor, isStaff, getJwtSecret };
