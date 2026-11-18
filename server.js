@@ -31,6 +31,7 @@ app.use('/urgency', require('./routes/urgency'));
 app.use('/doctors', require('./routes/doctors'));
 app.use('/holidays', require('./routes/holidays'));
 app.use('/welcome', require('./routes/welcome'));
+app.use('/messages', require('./routes/messages'));
 // app.use('/users', requireAdmin, require('./routes/users'));
 
 // -----------------------------------------------------------------
@@ -40,7 +41,7 @@ app.get('/', (req, res) => {
   res.json({
     status: 'OK',
     message: 'esdoorn‑api is running',
-    endpoints: ['/welcome', '/doctors', '/urgency', '/holidays', '/doctors/holidays', '/doctors_with_holidays']
+    endpoints: ['/welcome', '/messages', '/doctors', '/urgency', '/holidays', '/doctors/holidays', '/doctors_with_holidays']
   });
 });
 
