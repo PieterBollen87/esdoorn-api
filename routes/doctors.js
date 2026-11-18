@@ -2,26 +2,43 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');            // MySQL wrapper
-const path = require('path');
-const fs = require('fs');
 const multer = require('multer');
-const { verifyToken, requireAdmin } = require('../middleware/auth');
+const { verifyToken, requireAdmin, requireAdminOrDoctor } = require('../middleware/auth');
 
 // ------------------------------------------------
-// Multer setup – store uploaded avatars in ./uploads
-// ------------------------------------------
-const uploadDir = path.join(__dirname, '..', 'uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-
-const storage = multer.memoryStorage({
-  destination: (_, __, cb) => cb(null, uploadDir),
-  filename: (_, file, cb) => {
-    const ext = path.extname(file.originalname);
-    const name = `${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`;
-    cb(null, name);
-  }
+// Photo upload: kept in memory and stored in the database (imageBase64).
+// Only images, max 8 MB (the admin page shrinks photos before uploading, so they are much smaller).
+// ------------------------------------------------
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const multerUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024, files: 1 },
+  fileFilter: (req, file, cb) => IMAGE_TYPES.includes(file.mimetype)
+    ? cb(null, true)
+    : cb(Object.assign(new Error('Kies een foto (jpg, png, webp of gif).'), { status: 400 }))
 });
-const upload = multer({ storage });
+/** Same as upload.single('image'), but with a clear message instead of a crash when the file is wrong */
+const upload = {
+  single: field => (req, res, next) => multerUpload.single(field)(req, res, err => {
+    if (!err) return next();
+    const msg = err.code === 'LIMIT_FILE_SIZE' ? 'De foto is te groot (max. 8 MB).' : err.message;
+    res.status(400).json({ error: msg });
+  })
+};
+
+/** A doctor account may only change its own doctor (admins: everyone) */
+function ownDoctorOnly(req, res, next) {
+  if (req.user.role === 'admin' || Number(req.params.id) === req.user.doctorId) return next();
+  return res.status(403).json({ error: 'Je kan enkel je eigen gegevens wijzigen.' });
+}
+
+/** The real image type from the first bytes (older photos were saved as PNG but labelled jpeg) */
+function imageMime(base64) {
+  if (base64.startsWith('iVBOR')) return 'image/png';
+  if (base64.startsWith('R0lGOD')) return 'image/gif';
+  if (base64.startsWith('UklGR')) return 'image/webp';
+  return 'image/jpeg';
+}
 
 /**
  * Order of the doctors everywhere on the site:
@@ -52,7 +69,7 @@ function toApi(row, req) {
     haio: !!row.haio,
     sortOrder: row.sortOrder,
     imageUrl: row.imageBase64
-    ? `data:image/jpeg;base64,${row.imageBase64}`
+    ? `data:${imageMime(row.imageBase64)};base64,${row.imageBase64}`
     : null
   };
 }
@@ -146,7 +163,7 @@ router.put('/order', verifyToken, requireAdmin, async (req, res) => {
 /* -------------------------------------------------
    PUT /doctors/:id – update an existing doctor
    ------------------------------------------------- */
-router.put('/:id', verifyToken, requireAdmin, upload.single('image'), async (req, res) => {
+router.put('/:id', verifyToken, requireAdminOrDoctor, ownDoctorOnly, upload.single('image'), async (req, res) => {
   const id = Number(req.params.id);
   const { firstname, lastname, email, phone, agendaUrl } = req.body;
 
@@ -169,16 +186,11 @@ router.put('/:id', verifyToken, requireAdmin, upload.single('image'), async (req
         phone     || old.phone,
         agendaUrl || old.agendaUrl,
         imageBase64,
-        req.body.haio === undefined ? old.haio : readHaio(req.body.haio),   // not sent → keep as it was
+        // HAIO: only an admin can change it; not sent → keep as it was
+        req.user.role !== 'admin' || req.body.haio === undefined ? old.haio : readHaio(req.body.haio),
         id
       ]
     );
-
-    // If we replaced the image, delete the old file
-    if (req.file && old.imagePath) {
-      const oldPath = path.join(uploadDir, old.imagePath);
-      if (fs.existsSync(oldPath)) await fs.promises.unlink(oldPath);
-    }
 
     const updatedRows = await db.query('SELECT * FROM doctors WHERE id = ?', [id]);
     res.json(toApi(updatedRows[0], req));
@@ -193,7 +205,7 @@ router.put('/:id', verifyToken, requireAdmin, upload.single('image'), async (req
    -------------------------------------------- */
 router.delete('/:id', verifyToken, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
-  const rows = await db.query('SELECT imagePath FROM doctors WHERE id = ?', [id]);
+  const rows = await db.query('SELECT id FROM doctors WHERE id = ?', [id]);
   const doctor = rows[0];
   if (!doctor) return res.status(404).json({ error: 'Doctor not found' });
 
@@ -201,12 +213,6 @@ router.delete('/:id', verifyToken, requireAdmin, async (req, res) => {
     await db.pool.execute('DELETE FROM doctors WHERE id = ?', [id]);
     // The doctor's login account goes too (there is no foreign key that does this)
     await db.pool.execute('DELETE FROM users WHERE doctorId = ?', [id]);
-
-    // Delete the avatar file if it existed
-    if (doctor.imagePath) {
-      const imgPath = path.join(uploadDir, doctor.imagePath);
-      if (fs.existsSync(imgPath)) await fs.promises.unlink(imgPath);
-    }
 
     res.json({ message: 'Doctor deleted' });
   } catch (err) {
