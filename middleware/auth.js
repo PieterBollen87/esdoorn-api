@@ -30,10 +30,10 @@ function verifyToken(req, res, next) {
     if (err) return res.status(401).json({ error: 'Invalid or expired token' });
     try {
       // payload contains sub (user id) and role (admin/user)
-      const users = await db.query('SELECT id, username, role FROM users WHERE id = ?', [payload.sub]);
+      const users = await db.query('SELECT id, username, role, doctorId FROM users WHERE id = ?', [payload.sub]);
       const user = users[0] ?? null;
       if (!user) return res.status(401).json({ error: 'User not found' });
-      req.user = { id: user.id, username: user.username, role: user.role };
+      req.user = { id: user.id, username: user.username, role: user.role, doctorId: user.doctorId ?? null };
       next();
     } catch (dbErr) {
       // Without this catch a database hiccup would crash the whole API process
@@ -48,4 +48,11 @@ function requireAdmin(req, res, next) {
   return res.status(403).json({ error: 'Admin privileges required' });
 }
 
-module.exports = { verifyToken, requireAdmin, getJwtSecret };
+/* Admin, or a doctor whose account is linked to a doctor (for "Mijn verlof") */
+function requireAdminOrDoctor(req, res, next) {
+  if (req.user && req.user.role === 'admin') return next();
+  if (req.user && req.user.role === 'doctor' && req.user.doctorId) return next();
+  return res.status(403).json({ error: 'Geen toegang' });
+}
+
+module.exports = { verifyToken, requireAdmin, requireAdminOrDoctor, getJwtSecret };

@@ -5,15 +5,24 @@ const db = require('../db');               // <-- now the MySQL wrapper
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
-const { verifyToken, requireAdmin, getJwtSecret } = require('../middleware/auth');
+const { verifyToken, getJwtSecret } = require('../middleware/auth');
 
 // ------------------------------------------------
 // Rate limiter – 5 attempts per 5 min per IP
 // -------------------------------------------------
+// Only FAILED attempts count, so doctors logging in from the same practice don't block each other
 const loginLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000,
-  max: 5,
-  message: { error: 'Too many login attempts, try again later.' }
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  skipSuccessfulRequests: true,
+  message: { error: 'Te veel mislukte inlogpogingen. Probeer het over een kwartier opnieuw.' }
+});
+
+// Separate limiter for password changes (doesn't eat into the login attempts)
+const passwordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Te veel pogingen, probeer het later opnieuw.' }
 });
 
 /* -------------------------------------------------
@@ -41,8 +50,8 @@ router.post('/login', loginLimiter, async (req, res) => {
     const payload = {
       sub: user.id,
       username: user.username,
-      email: user.email,
-      role: user.role               // 'admin' or 'user'
+      role: user.role,              // 'admin' or 'doctor'
+      doctorId: user.doctorId ?? null
     };
 
     const secret = getJwtSecret();
@@ -60,44 +69,28 @@ router.post('/login', loginLimiter, async (req, res) => {
 });
 
 /* -------------------------------------------------
-   POST /auth/register – hash password before INSERT
-   -------------------------------------------- */
-router.post('/register', verifyToken, requireAdmin, async (req, res) => {
-  const { username, email, password, role = 'user' } = req.body;
-
-  if (!username || !email || !password) {
-    return res.status(400).json({ error: 'username, email & password required' });
+   POST /auth/change-password – any logged-in user changes their own password
+   Body: { currentPassword, newPassword }
+   ------------------------------------------------- */
+router.post('/change-password', passwordLimiter, verifyToken, async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: 'Vul je huidige en je nieuwe wachtwoord in.' });
   }
-  if (!['admin', 'user'].includes(role)) {
-    return res.status(400).json({ error: 'role must be "admin" or "user"' });
+  if (String(newPassword).length < 10) {
+    return res.status(400).json({ error: 'Het nieuwe wachtwoord moet minstens 10 tekens lang zijn.' });
   }
-
   try {
-    const hash = await bcrypt.hash(password, 12); // 12 rounds = good default
-
-    // INSERT INTO users (username,email,passwordHash,role) VALUES (?,?,?,?)
-    const result = await db.pool.execute(
-      `INSERT INTO users (username, email, passwordHash, role)
-       VALUES (?,?,?,?)`,
-      [username, email, hash, role]
-    );
-
-    // `result[0].insertId` is the newly created user id
-    const insertId = result[0].insertId;
-
-    res.status(201).json({
-      id: insertId,
-      username,
-      email,
-      role
-    });
-  } catch (err) {
-    // Duplicate username/email → MySQL error code ER_DUP_ENTRY (1062)
-    if (err.code === 'ER_DUP_ENTRY') {
-      return res.status(409).json({ error: 'Username or email already exists' });
+    const [user] = await db.query('SELECT id, password FROM users WHERE id = ?', [req.user.id]);
+    if (!user || !(await bcrypt.compare(currentPassword, user.password))) {
+      return res.status(401).json({ error: 'Je huidige wachtwoord klopt niet.' });
     }
-    console.error('REGISTER error:', err);
-    res.status(500).json({ error: err.message });
+    const hash = await bcrypt.hash(String(newPassword), 12);
+    await db.query('UPDATE users SET password = ? WHERE id = ?', [hash, req.user.id]);
+    res.json({ message: 'Wachtwoord gewijzigd' });
+  } catch (err) {
+    console.error('CHANGE PASSWORD error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

@@ -1,145 +1,110 @@
-// routes/holidays.js
+// routes/holidays.js – leave ("verlof") of the doctors
+// Reading is public (the site shows it on the doctor cards).
+// Admin: can manage everyone's leave. Doctor account: only their own (doctorId from their account, never from the request).
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { verifyToken, requireAdmin } = require('../middleware/auth');
+const { verifyToken, requireAdminOrDoctor } = require('../middleware/auth');
 
-/**
- * Helper – convert a DB row to the API shape
- */
-function toApi(row, req) {
-  return {
-    id: row.id,
-    doctorId: row.doctorId,
-    doctorName: row.doctorName,
-    startDate: row.startDate,
-    endDate: row.endDate
-  };
+// Dates as plain 'YYYY-MM-DD' text, so no time zone can shift them by a day
+const SELECT = `
+  SELECT h.id, h.doctorId,
+         TRIM(CONCAT(d.firstname, ' ', d.lastname)) AS doctorName,
+         DATE_FORMAT(h.startDate, '%Y-%m-%d') AS startDate,
+         DATE_FORMAT(h.endDate, '%Y-%m-%d') AS endDate
+  FROM holidays h
+  JOIN doctors d ON d.id = h.doctorId`;
+
+const isDate = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(new Date(v + 'T00:00:00Z'));
+
+/** Validate start/end. Returns { startDate, endDate } or { error } */
+function readDates(body = {}) {
+  const { startDate, endDate } = body;
+  if (!isDate(startDate) || !isDate(endDate)) return { error: 'Kies een begin- en einddatum.' };
+  if (endDate < startDate) return { error: 'De einddatum mag niet vóór de begindatum liggen.' };
+  return { startDate, endDate };
 }
 
-/* -------------------------------------------------
-   GET /holidays – list all holiday entries (admin only)
-   ------------------------------------------------- */
+/** Which doctor this request may write for: a doctor always only themselves */
+function targetDoctorId(req) {
+  return req.user.role === 'doctor' ? req.user.doctorId : Number(req.body.doctorId);
+}
+
+/** A doctor may only change their own leave */
+const mayChange = (req, holiday) => req.user.role === 'admin' || holiday.doctorId === req.user.doctorId;
+
+/* GET /holidays – all leave (public) */
 router.get('/', async (req, res) => {
-  const sql = `
-    SELECT h.id, h.doctorId,
-           CONCAT(d.firstname, ' ', d.lastname) AS doctorName,
-           h.startDate, h.endDate
-    FROM holidays h
-    JOIN doctors d ON d.id = h.doctorId
-    ORDER BY h.startDate DESC
-  `;
   try {
-    const rows = await db.query(sql);
-    res.json(rows.map(r => toApi(r, req)));
+    res.json(await db.query(`${SELECT} ORDER BY h.startDate DESC`));
   } catch (err) {
-    console.error('HOLIDAYS GET error:', err);
-    res.status(500).json({ error: err.message });
+    console.error('HOLIDAYS GET error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-/* -------------------------------------------------
-   GET /holidays/:id – single holiday
-   ------------------------------------------------- */
+/* GET /holidays/:id */
 router.get('/:id', async (req, res) => {
-  const id = Number(req.params.id);
-  const sql = `
-    SELECT h.id, h.doctorId,
-           CONCAT(d.firstname, ' ', d.lastname) AS doctorName,
-           h.startDate, h.endDate
-    FROM holidays h
-    JOIN doctors d ON d.id = h.doctorId
-    WHERE h.id = ?
-  `;
   try {
-    const row = await db.query(sql, [id]);
-    const holiday = row[0];
-    if (!holiday) return res.status(404).json({ error: 'Holiday not found' });
-    res.json(toApi(holiday, req));
+    const [holiday] = await db.query(`${SELECT} WHERE h.id = ?`, [Number(req.params.id)]);
+    if (!holiday) return res.status(404).json({ error: 'Verlof niet gevonden' });
+    res.json(holiday);
   } catch (err) {
-    console.error('HOLIDAYS GET/:id error:', err);
-    res.status(500).json({ error: err.message });
+    console.error('HOLIDAYS GET/:id error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-/* -------------------------------------------------
-   POST /holidays – create a new holiday
-   ------------------------------------------------- */
-router.post('/', verifyToken, requireAdmin, async (req, res) => {
-  const { doctorId, startDate, endDate } = req.body;
-  if (!doctorId || !startDate || !endDate) {
-    return res.status(400).json({ error: 'doctorId, startDate and endDate required' });
-  }
-
-  const sql = `INSERT INTO holidays (doctorId, startDate, endDate) VALUES (?,?,?)`;
+/* POST /holidays – add leave */
+router.post('/', verifyToken, requireAdminOrDoctor, async (req, res) => {
+  const dates = readDates(req.body);
+  if (dates.error) return res.status(400).json({ error: dates.error });
+  const doctorId = targetDoctorId(req);
+  if (!Number.isInteger(doctorId)) return res.status(400).json({ error: 'Kies een dokter.' });
   try {
-    const result = await db.query(sql, [doctorId, startDate, endDate]);
-    // Return the freshly created row with doctorName
-    const row = await db.query(`
-      SELECT h.id, h.doctorId,
-             CONCAT(d.firstname, ' ', d.lastname) AS doctorName,
-             h.startDate, h.endDate
-      FROM holidays h
-      JOIN doctors d ON d.id = h.doctorId
-      WHERE h.id = ?`,
-      [result.insertId]
-    );
-    res.status(201).json(toApi(row, req));
+    const result = await db.query('INSERT INTO holidays (doctorId, startDate, endDate) VALUES (?, ?, ?)',
+      [doctorId, dates.startDate, dates.endDate]);
+    const [holiday] = await db.query(`${SELECT} WHERE h.id = ?`, [result.insertId]);
+    res.status(201).json(holiday);
   } catch (err) {
-    console.error('HOLIDAYS POST error:', err);
-    res.status(500).json({ error: err.message });
+    if (err.code === 'ER_NO_REFERENCED_ROW_2') return res.status(400).json({ error: 'Deze dokter bestaat niet.' });
+    console.error('HOLIDAYS POST error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-/* -------------------------------------------------
-   PUT /holidays/:id – update an existing holiday
-   ------------------------------------------------- */
-router.put('/:id', verifyToken, requireAdmin, async (req, res) => {
+/* PUT /holidays/:id – change leave */
+router.put('/:id', verifyToken, requireAdminOrDoctor, async (req, res) => {
   const id = Number(req.params.id);
-  const { doctorId, startDate, endDate } = req.body;
-
-  // Load existing row
-  const old = await db.query('SELECT * FROM holidays WHERE id = ?', [id]);
-  if (!old) return res.status(404).json({ error: 'Holiday not found' });
-
-  const sql = `UPDATE holidays SET doctorId=?, startDate=?, endDate=? WHERE id=?`;
+  const dates = readDates(req.body);
+  if (dates.error) return res.status(400).json({ error: dates.error });
   try {
-    await db.query(sql, [
-      doctorId || old.doctorId,
-      startDate || old.startDate,
-      endDate   || old.endDate,
-      id
-    ]);
-
-    const updated = await db.query(`
-      SELECT h.id, h.doctorId,
-             CONCAT(d.firstname, ' ', d.lastname) AS doctorName,
-             h.startDate, h.endDate
-      FROM holidays h
-      JOIN doctors d ON d.id = h.doctorId
-      WHERE h.id = ?`,
-      [id]
-    );
-
-    res.json(toApi(updated, req));
+    const [current] = await db.query(`${SELECT} WHERE h.id = ?`, [id]);
+    if (!current) return res.status(404).json({ error: 'Verlof niet gevonden' });
+    if (!mayChange(req, current)) return res.status(403).json({ error: 'Je kan enkel je eigen verlof wijzigen.' });
+    const doctorId = req.user.role === 'admin' && req.body.doctorId ? Number(req.body.doctorId) : current.doctorId;
+    await db.query('UPDATE holidays SET doctorId = ?, startDate = ?, endDate = ? WHERE id = ?',
+      [doctorId, dates.startDate, dates.endDate, id]);
+    const [holiday] = await db.query(`${SELECT} WHERE h.id = ?`, [id]);
+    res.json(holiday);
   } catch (err) {
-    console.error('HOLIDAYS PUT error:', err);
-    res.status(500).json({ error: err.message });
+    console.error('HOLIDAYS PUT error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-/* -------------------------------------------------
-   DELETE /holidays/:id – remove a holiday
-   ------------------------------------------------- */
-router.delete('/:id', verifyToken, requireAdmin, async (req, res) => {
+/* DELETE /holidays/:id */
+router.delete('/:id', verifyToken, requireAdminOrDoctor, async (req, res) => {
   const id = Number(req.params.id);
   try {
-    const result = await db.query('DELETE FROM holidays WHERE id = ?', [id]);
-    if (result.affectedRows === 0) return res.status(404).json({ error: 'Holiday not found' });
-    res.json({ message: 'Holiday deleted' });
+    const [current] = await db.query(`${SELECT} WHERE h.id = ?`, [id]);
+    if (!current) return res.status(404).json({ error: 'Verlof niet gevonden' });
+    if (!mayChange(req, current)) return res.status(403).json({ error: 'Je kan enkel je eigen verlof verwijderen.' });
+    await db.query('DELETE FROM holidays WHERE id = ?', [id]);
+    res.json({ message: 'Verlof verwijderd' });
   } catch (err) {
-    console.error('HOLIDAYS DELETE error:', err);
-    res.status(500).json({ error: err.message });
+    console.error('HOLIDAYS DELETE error:', err.message);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

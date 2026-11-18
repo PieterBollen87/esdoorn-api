@@ -199,6 +199,8 @@ router.delete('/:id', verifyToken, requireAdmin, async (req, res) => {
 
   try {
     await db.pool.execute('DELETE FROM doctors WHERE id = ?', [id]);
+    // The doctor's login account goes too (there is no foreign key that does this)
+    await db.pool.execute('DELETE FROM users WHERE doctorId = ?', [id]);
 
     // Delete the avatar file if it existed
     if (doctor.imagePath) {
