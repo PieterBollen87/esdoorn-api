@@ -23,6 +23,19 @@ const storage = multer.memoryStorage({
 });
 const upload = multer({ storage });
 
+/**
+ * Order of the doctors everywhere on the site:
+ * 1. normal doctors, 2. HAIO (huisarts in opleiding), 3. "Vertegenwoordigers" always last.
+ */
+const ORDER = `ORDER BY (LOWER(TRIM(firstname)) LIKE 'vertegenwoordiger%' OR LOWER(TRIM(lastname)) LIKE 'vertegenwoordiger%'),
+               haio, id`;
+
+/** Checkbox value from a multipart form: '1' / 'on' / 'true' = yes. Hidden '0' + checkbox '1' arrives as an array. */
+function readHaio(value) {
+  const v = Array.isArray(value) ? value[value.length - 1] : value;
+  return ['1', 'on', 'true'].includes(String(v).toLowerCase()) ? 1 : 0;
+}
+
 // ---------------------------------------------
 // Helper – turn a DB row into the API shape (adds image URL)
 // -------------------------------------------------
@@ -35,6 +48,7 @@ function toApi(row, req) {
     email: row.email,
     phone: row.phone,
     agendaUrl: row.agendaUrl,
+    haio: !!row.haio,
     imageUrl: row.imageBase64
     ? `data:image/jpeg;base64,${row.imageBase64}`
     : null
@@ -46,7 +60,7 @@ function toApi(row, req) {
    ------------------------------------------------- */
 router.get('/', async (req, res) => {
   try {
-    const rows = await db.query('SELECT * FROM doctors ORDER BY id');
+    const rows = await db.query(`SELECT * FROM doctors ${ORDER}`);
     const result = rows.map(r => toApi(r, req));
     res.json(result);
   } catch (err) {
@@ -84,9 +98,9 @@ router.post('/', verifyToken, requireAdmin, upload.single('image'), async (req, 
 
   try {
     const [result] = await db.pool.execute(
-      `INSERT INTO doctors (firstname, lastname, email, phone, agendaUrl, imageBase64)
-       VALUES (?,?,?,?,?,?)`,
-      [firstname, lastname, email, phone, agendaUrl, imageBase64]
+      `INSERT INTO doctors (firstname, lastname, email, phone, agendaUrl, imageBase64, haio)
+       VALUES (?,?,?,?,?,?,?)`,
+      [firstname, lastname, email, phone, agendaUrl, imageBase64, readHaio(req.body.haio)]
     );
     console.log(result);
     const insertId = result.insertId;
@@ -117,7 +131,7 @@ router.put('/:id', verifyToken, requireAdmin, upload.single('image'), async (req
 
   try {
     await db.pool.execute(
-      `UPDATE doctors SET firstname=?, lastname=?, email=?, phone=?, agendaUrl=?, imageBase64=? WHERE id=?`,
+      `UPDATE doctors SET firstname=?, lastname=?, email=?, phone=?, agendaUrl=?, imageBase64=?, haio=? WHERE id=?`,
       [
         firstname || old.firstname,
         lastname  || old.lastname,
@@ -125,6 +139,7 @@ router.put('/:id', verifyToken, requireAdmin, upload.single('image'), async (req
         phone     || old.phone,
         agendaUrl || old.agendaUrl,
         imageBase64,
+        req.body.haio === undefined ? old.haio : readHaio(req.body.haio),   // not sent → keep as it was
         id
       ]
     );
