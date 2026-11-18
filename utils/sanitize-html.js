@@ -1,8 +1,8 @@
 // utils/sanitize-html.js
 // Small whitelist sanitizer for the message editor's HTML.
-// Keeps only simple formatting; every other tag and attribute is dropped.
+// Keeps only simple formatting (incl. h3 for small headings like "Opgelet:"); every other tag and attribute is dropped.
 
-const ALLOWED_TAGS = new Set(['b', 'strong', 'i', 'em', 'u', 'a', 'span', 'p', 'br', 'div']);
+const ALLOWED_TAGS = new Set(['b', 'strong', 'i', 'em', 'u', 'a', 'span', 'p', 'br', 'div', 'h3']);
 const VOID_TAGS = new Set(['br']);
 const SAFE_URL = /^(https?:\/\/|mailto:|tel:|\/|#)/i;
 
